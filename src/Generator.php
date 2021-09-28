@@ -123,7 +123,7 @@ class Generator
         }
 
         if ($this->after) {
-            call_user_func($this->after);
+            call_user_func($this->after, $this->siteHandle, $this->destinationFolder);
         }
     }
 
