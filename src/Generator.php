@@ -37,6 +37,8 @@ class Generator
     protected $viewPaths;
     protected $extraUrls;
     protected $workers = 1;
+    protected $siteHandle = null;
+    protected $destinationFolder = null;
 
     public function __construct(Application $app, Filesystem $files, Router $router, Tasks $tasks)
     {
@@ -65,6 +67,20 @@ class Generator
 
         return $this;
     }
+    
+    public function siteHandle(?string $siteHandle)
+    {
+        $this->siteHandle = $siteHandle;
+
+        return $this;
+    }
+    
+    public function destinationFolder(?string $destinationFolder)
+    {
+        $this->destinationFolder = $destinationFolder;
+
+        return $this;
+    }
 
     public function after($after)
     {
@@ -82,7 +98,11 @@ class Generator
     {
         $this->checkConcurrencySupport();
 
-        Site::setCurrent(Site::default()->handle());
+        Site::setCurrent($this->siteHandle ?: Site::default()->handle());
+
+        if ($this->destinationFolder) {
+            $this->config['destination'] = $this->destinationFolder;
+        }
 
         $this
             ->bindGlide()
@@ -209,6 +229,11 @@ class Generator
             ->merge($this->terms())
             ->merge($this->scopedTerms())
             ->values()
+            ->when($this->siteHandle, function($collection) {
+                return $collection->filter(
+                    fn($item) => $item->site() == Site::current()
+                );
+            })
             ->unique->url()
             ->reject(function ($page) {
                 foreach ($this->config['exclude'] as $url) {
@@ -218,7 +243,8 @@ class Generator
                 }
 
                 return in_array($page->url(), $this->config['exclude']);
-            })->shuffle();
+            })
+            ->shuffle();
     }
 
     protected function makeContentGenerationClosures($pages, $request)
@@ -350,7 +376,7 @@ class Generator
 
     protected function updateCurrentSite($site)
     {
-        Site::setCurrent($site->handle());
+        Site::setCurrent($this->siteHandle ?: $site->handle());
         Cascade::withSite($site);
 
         // Set the locale for dates, carbon, and for the translator.

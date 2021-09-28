@@ -21,7 +21,7 @@ class StaticSiteGenerate extends Command
      *
      * @var string
      */
-    protected $signature = 'statamic:ssg:generate {--workers=}';
+    protected $signature = 'statamic:ssg:generate {--workers=} {--site-handle=} {--destination-folder=}';
 
     /**
      * The console command description.
@@ -56,6 +56,8 @@ class StaticSiteGenerate extends Command
         }
 
         $this->generator
+            ->siteHandle($this->option('site-handle') ?? null)
+            ->destinationFolder($this->option('destination-folder') ?? null)
             ->workers($workers ?? 1)
             ->generate();
     }
