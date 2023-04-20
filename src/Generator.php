@@ -2,7 +2,9 @@
 
 namespace Statamic\StaticSite;
 
+use Carbon\Carbon;
 use Spatie\Fork\Fork;
+use Statamic\Statamic;
 use Facades\Statamic\View\Cascade;
 use Statamic\Facades\URL;
 use Statamic\Support\Str;
@@ -11,6 +13,7 @@ use Illuminate\Routing\Router;
 use Illuminate\Support\Arr;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
+use Statamic\Facades\Glide;
 use Statamic\Facades\Term;
 use League\Flysystem\Adapter\Local;
 use Statamic\Imaging\ImageGenerator;
@@ -31,7 +34,6 @@ class Generator
     protected $config;
     protected $request;
     protected $after;
-    protected $viewPaths;
     protected $extraUrls;
     protected $workers = 1;
     protected $taskResults;
@@ -104,7 +106,6 @@ class Generator
 
         $this
             ->bindGlide()
-            ->backupViewPaths()
             ->clearDirectory()
             ->createContentFiles()
             ->createSymlinks()
@@ -118,6 +119,14 @@ class Generator
 
     public function bindGlide()
     {
+        $override = $this->config['glide']['override'] ?? true;
+
+        if (! $override) {
+            return $this;
+        }
+
+        Glide::cacheStore()->clear();
+
         $directory = Arr::get($this->config, 'glide.directory');
 
         // Determine which adapter to use for Flysystem 1.x or 3.x.
@@ -134,13 +143,6 @@ class Generator
                 'route' => URL::tidy($this->config['base_url'] . '/' . $directory)
             ]);
         });
-
-        return $this;
-    }
-
-    public function backupViewPaths()
-    {
-        $this->viewPaths = view()->getFinder()->getPaths();
 
         return $this;
     }
@@ -190,6 +192,7 @@ class Generator
         $request = tap(Request::capture(), function ($request) {
             $request->setConfig($this->config);
             $this->app->instance('request', $request);
+            Cascade::withRequest($request);
         });
 
         $pages = $this->gatherContent();
@@ -274,9 +277,14 @@ class Generator
                 $errors = [];
 
                 foreach ($pages as $page) {
-                    $this->updateCurrentSite($page->site());
+                    // There is no getter method, so use reflection.
+                    $oldCarbonFormat = (new \ReflectionClass(Carbon::class))->getStaticPropertyValue('toStringFormat');
 
-                    view()->getFinder()->setPaths($this->viewPaths);
+                    if ($this->shouldSetCarbonFormat($page)) {
+                        Carbon::setToStringFormat(Statamic::dateFormat());
+                    }
+
+                    $this->updateCurrentSite($page->site());
 
                     $count++;
 
@@ -293,6 +301,8 @@ class Generator
 
                         $errors[] = $e->consoleMessage();
                         continue;
+                    } finally {
+                        Carbon::setToStringFormat($oldCarbonFormat);
                     }
 
                     if ($generated->hasWarning()) {
@@ -401,7 +411,7 @@ class Generator
                 && ! Str::contains($route->uri(), '{');
         })->map(function ($route) {
             $url = URL::tidy(Str::start($route->uri(), $this->config['base_url'].'/'));
-            return $this->createPage(new Route($url));
+            return $this->createPage(new StatamicRoute($url));
         });
     }
 
@@ -439,5 +449,14 @@ class Generator
         }
 
         return $config === 'warnings';
+    }
+
+    protected function shouldSetCarbonFormat($page)
+    {
+        $content = $page->content();
+
+        return $content instanceof \Statamic\Contracts\Entries\Entry
+            || $content instanceof \Statamic\Contracts\Taxonomies\Term
+            || $content instanceof StatamicRoute;
     }
 }
