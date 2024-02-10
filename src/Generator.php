@@ -245,7 +245,6 @@ class Generator
     {
         return collect()
             ->merge($this->routes())
-            ->merge($this->urls())
             ->merge($this->entries())
             ->merge($this->terms())
             ->merge($this->scopedTerms())
@@ -255,6 +254,7 @@ class Generator
                     fn($item) => $item->site() == Site::current()
                 );
             })
+            ->merge($this->urls())
             ->unique->url()
             ->reject(function ($page) {
                 foreach ($this->config['exclude'] as $url) {
